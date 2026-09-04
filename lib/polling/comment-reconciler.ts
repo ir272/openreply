@@ -42,8 +42,10 @@ const LOOKBACK_HOURS = Number(process.env.COMMENT_POLL_LOOKBACK_HOURS ?? 72);
 // Hard cap on how many new comments a single campaign can enqueue per sweep, so
 // a viral post drains gradually instead of bursting into the comment API.
 const MAX_NEW_PER_SWEEP = Number(process.env.COMMENT_POLL_MAX_PER_SWEEP ?? 30);
-// For "any post" campaigns, how many recent posts to scan.
-const RECENT_MEDIA_LIMIT = 10;
+// For "any post" campaigns, how many recent posts to scan. Raise it when
+// older posts are still collecting comments; each extra post costs one
+// comments call per sweep.
+const RECENT_MEDIA_LIMIT = Number(process.env.COMMENT_POLL_MEDIA_LIMIT ?? 10);
 
 interface SweepStat {
   campaign: string;
