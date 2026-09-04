@@ -848,6 +848,35 @@ describe("DM Worker — Full Pipeline", () => {
   });
 });
 
+describe("DM Worker — one DM per person per campaign", () => {
+  it("should skip the DM when this campaign already messaged the commenter for an earlier comment", async () => {
+    mockPrisma.dmLog.findFirst.mockImplementation(
+      async (
+        args: { where?: { status?: string; commenterId?: string; commentId?: unknown } } = {}
+      ) =>
+        args.where?.status === "SENT" && args.where?.commenterId
+          ? { id: "earlier_dm" }
+          : args.where?.status === "SENT"
+            ? null
+            : { commenterName: "commenter_user" }
+    );
+
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "SKIPPED_DEDUP",
+          errorMessage: expect.stringContaining("earlier comment"),
+        }),
+      })
+    );
+  });
+});
+
 describe("DM Worker — one private reply per comment", () => {
   it("should skip a campaign when another already used the comment's private reply", async () => {
     mockPrisma.dmLog.findFirst.mockImplementation(

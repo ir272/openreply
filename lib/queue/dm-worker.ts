@@ -434,6 +434,37 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       continue;
     }
 
+    // One DM per person per campaign. Someone who answers five quizzes leaves
+    // five comments; Instagram allows a private reply on each, but sending the
+    // same opening DM five times reads as spam. Skip the DM leg when this
+    // campaign already delivered one to this commenter for any earlier
+    // comment (or already revealed the link to them). The public reply above
+    // still posts on every comment.
+    const alreadyMessagedPerson = await prisma.dmLog.findFirst({
+      where: {
+        automationId: automation.id,
+        commenterId,
+        status: "SENT",
+        commentId: { not: commentId },
+      },
+      select: { id: true },
+    });
+    if (alreadyMessagedPerson) {
+      await prisma.dmLog.update({
+        where: {
+          automationId_commentId: { automationId: automation.id, commentId },
+        },
+        data: {
+          status: "SKIPPED_DEDUP",
+          matchedKeyword: matchResult.matchedKeyword,
+          errorMessage:
+            "This campaign already sent this person a DM for an earlier comment",
+        },
+      });
+      continue;
+    }
+
+
     const usage = await reserveWorkspaceDMSend(automation.workspaceId);
     if (!usage.allowed) {
       await prisma.dmLog.update({
@@ -715,11 +746,11 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     return;
   }
 
-  // Duplicate sends are enabled: every button tap re-sends the reveal
-  // instead of only firing once per person.
+  // One reveal per person per campaign: a second button tap (or a read
+  // fallback) after the link already went out must not re-send it.
   const dedupeId = `reveal:${userId}`;
 
-  if (fallback) {
+  {
     const existingReveal = await prisma.dmLog.findUnique({
       where: {
         automationId_commentId: {
